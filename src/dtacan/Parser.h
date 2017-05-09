@@ -23,7 +23,6 @@ private:
     B& base();
     const char* skipJunk(const char* start, const char* it, const char* end);
     uint32_t parseAddress(const char* it, std::size_t size);
-    const char* parseData(const char* it, uint8_t* dest, std::size_t size);
 
     std::string _buffer;
 };
@@ -54,15 +53,16 @@ template <typename B>
 inline const char* Parser<B>::skipJunk(const char* start, const char* it, const char* end)
 {
     it = std::find_if(it, end, [](char c) {
-        return c != '\r';
+        return c == '\r';
     });
-    base().handleJunk(start, it - start);
+    base().handleJunk((const uint8_t*)start, it - start);
+    return it;
 }
 
 template <typename B>
 uint32_t Parser<B>::parseAddress(const char* it, std::size_t size)
 {
-    uint32_t address;
+    uint32_t address = 0;
     unsigned shift = size * 4;
     while (shift != 0) {
         shift -= 4;
@@ -77,12 +77,6 @@ uint32_t Parser<B>::parseAddress(const char* it, std::size_t size)
 }
 
 template <typename B>
-const char* Parser<B>::parseData(const char* it, uint8_t* dest, std::size_t size)
-{
-
-}
-
-template <typename B>
 void Parser<B>::acceptData(const void* data, std::size_t size)
 {
     if (size == 0) {
@@ -91,8 +85,8 @@ void Parser<B>::acceptData(const void* data, std::size_t size)
 
     _buffer.append((const char*)data, size);
 
-    const char* it = _buffer.begin();
-    const char* end = _buffer.end();
+    const char* it = _buffer.data();
+    const char* end = it + _buffer.size();
 
     while (true) {
         const char* currentMsg = it;
@@ -116,12 +110,12 @@ void Parser<B>::acceptData(const void* data, std::size_t size)
             break;
         case 't': {
             if ((end - it) < 5) {
-                _buffer.erase(_buffer.begin(), currentMsg);
+                _buffer.erase(0, currentMsg - _buffer.data());
                 return;
             }
             it++;
             uint32_t address = parseAddress(it, 3);
-            if (address == 0xffffffff) {
+            if (address > 0x7ff) {
                 it = skipJunk(currentMsg, it, end);
                 break;
             }
@@ -133,11 +127,11 @@ void Parser<B>::acceptData(const void* data, std::size_t size)
             }
             it++;
             if ((end - it) < dataSize * 2) {
-                _buffer.erase(_buffer.begin(), currentMsg);
+                _buffer.erase(0, currentMsg - _buffer.data());
                 return;
             }
             uint8_t data[8];
-            for (std::size_t i = 0; i < size; i++) {
+            for (std::size_t i = 0; i < dataSize; i++) {
                 uint8_t l = charToNibble(it[0]);
                 if (l == 0xff) {
                     it = skipJunk(currentMsg, it, end);
@@ -151,8 +145,13 @@ void Parser<B>::acceptData(const void* data, std::size_t size)
                 data[i] = (l << 4) | r;
                 it += 2;
             }
-            handleData(address, data, dataSize);
-            it += dataSize * 2;
+            if (*it != '\r') {
+                it = skipJunk(currentMsg, it, end);
+                break;
+            } else {
+                it++;
+            }
+            base().handleData(address, data, dataSize);
             break;
         }
         default:
@@ -163,4 +162,5 @@ void Parser<B>::acceptData(const void* data, std::size_t size)
             return;
         }
     }
+}
 }

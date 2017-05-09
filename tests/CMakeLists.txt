@@ -1,5 +1,9 @@
 include_directories(${GTEST_INCLUDE_DIRS})
 
+if(NOT MSVC)
+    add_definitions(-Wall -Wextra)
+endif()
+
 set(TESTS_DIR ${CMAKE_BINARY_DIR}/bin/tests)
 file(MAKE_DIRECTORY ${TESTS_DIR})
 
@@ -21,4 +25,5 @@ macro(add_unit_test test file)
 endmacro()
 
 add_unit_test(encoder_tests EncoderTest.cpp)
+add_unit_test(parser_tests ParserTest.cpp)
 
