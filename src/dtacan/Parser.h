@@ -87,13 +87,14 @@ void Parser<B>::acceptData(const void* data, std::size_t size)
 
     const char* it = _buffer.data();
     const char* end = it + _buffer.size();
+    std::size_t addrSize;
+    uint32_t maxAddress;
 
     while (true) {
         const char* currentMsg = it;
         switch (*it) {
         case '\r':
             it++;
-
             break;
         case 'z':
             it++;
@@ -108,25 +109,33 @@ void Parser<B>::acceptData(const void* data, std::size_t size)
                 it++;
             }
             break;
-        case 't': {
-            if ((end - it) < 5) {
+        case 't':
+            addrSize = 3;
+            maxAddress = 0x7ff;
+            goto parseFrame;
+        case 'T':
+            addrSize = 8;
+            maxAddress = 0x1fffffff;
+parseFrame: {
+            assert(end >= it);
+            if (std::size_t(end - it) < addrSize + 2) {
                 _buffer.erase(0, currentMsg - _buffer.data());
                 return;
             }
             it++;
-            uint32_t address = parseAddress(it, 3);
-            if (address > 0x7ff) {
+            uint32_t address = parseAddress(it, addrSize);
+            if (address > maxAddress) {
                 it = skipJunk(currentMsg, it, end);
                 break;
             }
-            it += 3;
+            it += addrSize;
             uint8_t dataSize = charToNibble(*it);
             if (dataSize > 8) {
                 it = skipJunk(currentMsg, it, end);
                 break;
             }
             it++;
-            if ((end - it) < dataSize * 2) {
+            if ((end - it) < (dataSize * 2 + 1)) {
                 _buffer.erase(0, currentMsg - _buffer.data());
                 return;
             }
@@ -135,12 +144,12 @@ void Parser<B>::acceptData(const void* data, std::size_t size)
                 uint8_t l = charToNibble(it[0]);
                 if (l == 0xff) {
                     it = skipJunk(currentMsg, it, end);
-                    break;
+                    goto checkEos;
                 }
                 uint8_t r = charToNibble(it[1]);
                 if (r == 0xff) {
                     it = skipJunk(currentMsg, it, end);
-                    break;
+                    goto checkEos;
                 }
                 data[i] = (l << 4) | r;
                 it += 2;
@@ -157,6 +166,7 @@ void Parser<B>::acceptData(const void* data, std::size_t size)
         default:
             it = skipJunk(currentMsg, it, end);
         }
+checkEos:
         if (it == end) {
             _buffer.clear();
             return;

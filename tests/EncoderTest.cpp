@@ -1,18 +1,9 @@
 #include "dtacan/Encoder.h"
+#include "dtacan/StringEncoder.h"
 
 #include <gtest/gtest.h>
 
 using namespace dtacan;
-
-class StringEncoder : public Encoder<StringEncoder> {
-public:
-    void handleEncodedData(const char* str, std::size_t size)
-    {
-        result.append(str, size);
-    }
-
-    std::string result;
-};
 
 class EncoderTest : public ::testing::Test {
 protected:
@@ -23,7 +14,7 @@ protected:
 
     void clear()
     {
-        _encoder.result.clear();
+        _encoder.result().clear();
     }
 
     template <std::size_t n>
@@ -32,9 +23,26 @@ protected:
         ASSERT_TRUE(_encoder.transmitData(address, array, n));
     }
 
-    void transmitEmpty(uint32_t address)
+    template <std::size_t n>
+    void transmitStdFrame(uint32_t address, uint8_t (&array)[n])
     {
-        ASSERT_TRUE(_encoder.transmitData(address, nullptr, 0));
+        ASSERT_TRUE(_encoder.transmitStdFrame(address, array, n));
+    }
+
+    template <std::size_t n>
+    void transmitExtFrame(uint32_t address, uint8_t (&array)[n])
+    {
+        ASSERT_TRUE(_encoder.transmitExtFrame(address, array, n));
+    }
+
+    void transmitStdEmpty(uint32_t address)
+    {
+        ASSERT_TRUE(_encoder.transmitStdFrame(address, nullptr, 0));
+    }
+
+    void transmitExtEmpty(uint32_t address)
+    {
+        ASSERT_TRUE(_encoder.transmitExtFrame(address, nullptr, 0));
     }
 
     void setBaudRate(BaudRate baud)
@@ -44,7 +52,7 @@ protected:
 
     void expectData(const char* data)
     {
-        EXPECT_EQ(data, _encoder.result);
+        EXPECT_EQ(data, _encoder.result());
     }
 
     StringEncoder _encoder;
@@ -52,21 +60,21 @@ protected:
 
 TEST_F(EncoderTest, stdFrameEmpty)
 {
-    transmitEmpty(0x7ff);
+    transmitStdEmpty(0x7ff);
     expectData("t7FF0\r");
 }
 
 TEST_F(EncoderTest, stdFrameOneMsg)
 {
     uint8_t data[] = {0xaa, 0xbb, 0xcc};
-    transmitData(0x0f0, data);
+    transmitStdFrame(0x0f0, data);
     expectData("t0F03AABBCC\r");
 }
 
 TEST_F(EncoderTest, stdFrameOneFullMsg)
 {
     uint8_t data[] = {0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x11, 0x22};
-    transmitData(0x111, data);
+    transmitStdFrame(0x111, data);
     expectData("t1118AABBCCDDEEFF1122\r");
 }
 
@@ -86,24 +94,37 @@ TEST_F(EncoderTest, stdFrameTwoFullMsgs)
 
 TEST_F(EncoderTest, extFrameEmpty)
 {
-    transmitEmpty(0x1fffffff);
+    transmitExtEmpty(0x1fffffff);
     expectData("T1FFFFFFF0\r");
 }
 
 TEST_F(EncoderTest, extFrameOneMsg)
 {
     uint8_t data[] = {0xf6, 0x26, 0x91};
-    transmitData(0x000008ff, data);
+    transmitExtFrame(0x000008ff, data);
     expectData("T000008FF3F62691\r");
 }
 
 TEST_F(EncoderTest, extFrameOneFullMsg)
 {
     uint8_t data[] = {0x22, 0x11, 0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa};
-    transmitData(0x10203040, data);
+    transmitExtFrame(0x10203040, data);
     expectData("T1020304082211FFEEDDCCBBAA\r");
 }
 
+TEST_F(EncoderTest, extFrameTwoMsgs)
+{
+    uint8_t data[] = {0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x11, 0x22, 0x24, 0x56};
+    transmitData(0x02020202, data);
+    expectData("T020202028AABBCCDDEEFF1122\rT0202020222456\r");
+}
+
+TEST_F(EncoderTest, extFrameTwoFullMsgs)
+{
+    uint8_t data[] = {0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x11, 0x22, 0x22, 0x11, 0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa};
+    transmitData(0x10000000, data);
+    expectData("T100000008AABBCCDDEEFF1122\rT1000000082211FFEEDDCCBBAA\r");
+}
 
 TEST_F(EncoderTest, baud10k)
 {

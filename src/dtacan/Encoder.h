@@ -20,8 +20,12 @@ public:
     void closeCanChannel();
     void setBaudrate(BaudRate rate);
     bool transmitData(uint32_t address, const void* data, std::size_t size);
+    bool transmitStdFrame(uint32_t address, const void* data, std::size_t size);
+    bool transmitExtFrame(uint32_t address, const void* data, std::size_t size);
 
 private:
+    void encodeStdFrame(uint32_t address, const void* data, std::size_t size);
+    void encodeExtFrame(uint32_t address, const void* data, std::size_t size);
     char baudRateToChar(BaudRate baud);
 
     B& base();
@@ -89,6 +93,50 @@ void Encoder<B>::closeCanChannel()
 }
 
 template <typename B>
+void Encoder<B>::encodeStdFrame(uint32_t address, const void* data, std::size_t size)
+{
+    char msg[22];
+    msg[0] = 't';
+    encodeAddress(address, msg + 1);
+    msg[4] = '0' + size;
+    encodeHexStream((const uint8_t*)data, msg + 5, size);
+    msg[5 + size * 2] = '\r';
+    base().handleEncodedData(msg, 5 + size * 2 + 1);
+}
+
+template <typename B>
+void Encoder<B>::encodeExtFrame(uint32_t address, const void* data, std::size_t size)
+{
+    char msg[27];
+    msg[0] = 'T';
+    encodeExtendedAddress(address, msg + 1);
+    msg[9] = '0' + size;
+    encodeHexStream((const uint8_t*)data, msg + 10, size);
+    msg[10 + size * 2] = '\r';
+    base().handleEncodedData(msg, 10 + size * 2 + 1);
+}
+
+template <typename B>
+bool Encoder<B>::transmitStdFrame(uint32_t address, const void* data, std::size_t size)
+{
+    if (size > 8 || address > 0x7ff) {
+        return false;
+    }
+    encodeStdFrame(address, data, size);
+    return true;
+}
+
+template <typename B>
+bool Encoder<B>::transmitExtFrame(uint32_t address, const void* data, std::size_t size)
+{
+    if (size > 8 || address > 0x1fffffff) {
+        return false;
+    }
+    encodeExtFrame(address, data, size);
+    return true;
+}
+
+template <typename B>
 bool Encoder<B>::transmitData(uint32_t address, const void* data, std::size_t size)
 {
     //TODO: refact
@@ -96,22 +144,10 @@ bool Encoder<B>::transmitData(uint32_t address, const void* data, std::size_t si
         if (address > 0x1fffffff) {
             return false;
         } else if (address > 0x7ff) {
-            char msg[27];
-            msg[0] = 'T';
-            encodeExtendedAddress(address, msg + 1);
-            msg[9] = '0' + size;
-            encodeHexStream((const uint8_t*)data, msg + 10, size);
-            msg[10 + size * 2] = '\r';
-            base().handleEncodedData(msg, 10 + size * 2 + 1);
+            encodeExtFrame(address, data, size);
             return true;
         }
-        char msg[22];
-        msg[0] = 't';
-        encodeAddress(address, msg + 1);
-        msg[4] = '0' + size;
-        encodeHexStream((const uint8_t*)data, msg + 5, size);
-        msg[5 + size * 2] = '\r';
-        base().handleEncodedData(msg, 5 + size * 2 + 1);
+        encodeStdFrame(address, data, size);
         return true;
     }
 
