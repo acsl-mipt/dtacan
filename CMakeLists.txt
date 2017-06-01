@@ -12,6 +12,9 @@ endif()
 
 target_include_directories(dtacan INTERFACE src)
 
-add_subdirectory(thirdparty/gtest)
-add_subdirectory(tests)
+get_directory_property(HAS_PARENT_SCOPE PARENT_DIRECTORY)
+if(NOT HAS_PARENT_SCOPE)
+    add_subdirectory(thirdparty/gtest)
+    add_subdirectory(tests)
+endif()
 

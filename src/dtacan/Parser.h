@@ -16,6 +16,7 @@ class Parser {
 public:
     void handleData(uint32_t address, const uint8_t* data, std::size_t size);
     void handleJunk(const uint8_t* junk, std::size_t size);
+    void handleReceipt();
 
     void acceptData(const void* data, std::size_t size);
 
@@ -47,6 +48,11 @@ inline void Parser<B>::handleJunk(const uint8_t* junk, std::size_t size)
 {
     (void)junk;
     (void)size;
+}
+
+template <typename B>
+inline void Parser<B>::handleReceipt()
+{
 }
 
 template <typename B>
@@ -108,6 +114,7 @@ void Parser<B>::acceptData(const void* data, std::size_t size)
             } else {
                 it++;
             }
+            base().handleReceipt();
             break;
         case 't':
             addrSize = 3;
